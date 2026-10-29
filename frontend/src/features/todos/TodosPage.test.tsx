@@ -137,15 +137,22 @@ it('does not count active tasks for the clear button', () => {
   expect(screen.getByRole('button', { name: 'Clear (0)' })).toBeVisible()
 })
 
-it('notifies that completed tasks were cleared', async () => {
-  const user = userEvent.setup()
-  const clearMutateAsync = vi.fn().mockResolvedValue({ deleted: 1 })
-  const { notify } = setup({ clearMutateAsync })
-  render(<TodosPage />)
-  await user.click(screen.getByRole('button', { name: 'Clear (0)' }))
-  expect(clearMutateAsync).toHaveBeenCalledTimes(1)
-  expect(notify).toHaveBeenCalledWith('Completed tasks cleared.')
-})
+it.each([
+  [1, 'Cleared 1 completed task.'],
+  [3, 'Cleared 3 completed tasks.'],
+  [0, 'Cleared 0 completed tasks.'],
+])(
+  'notifies with the cleared count when %i tasks were deleted',
+  async (deleted, message) => {
+    const user = userEvent.setup()
+    const clearMutateAsync = vi.fn().mockResolvedValue({ deleted })
+    const { notify } = setup({ clearMutateAsync })
+    render(<TodosPage />)
+    await user.click(screen.getByRole('button', { name: 'Clear (0)' }))
+    expect(clearMutateAsync).toHaveBeenCalledTimes(1)
+    expect(notify).toHaveBeenCalledWith(message)
+  },
+)
 
 it('does not notify when clearing fails', async () => {
   const user = userEvent.setup()
@@ -154,7 +161,7 @@ it('does not notify when clearing fails', async () => {
   render(<TodosPage />)
   await user.click(screen.getByRole('button', { name: 'Clear (0)' }))
   expect(clearMutateAsync).toHaveBeenCalledTimes(1)
-  expect(notify).not.toHaveBeenCalledWith('Completed tasks cleared.')
+  expect(notify).not.toHaveBeenCalled()
 })
 
 it('ignores clearing while the page is busy', async () => {
