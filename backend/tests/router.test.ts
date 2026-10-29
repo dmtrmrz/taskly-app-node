@@ -25,7 +25,66 @@ it('creates tasks with trimmed input and defaults', async () => {
   expect(response.body).toEqual(todo);
   expect(repository.create).toHaveBeenCalledWith({ title: 'Plan the sprint', description: '', priority: 'high', due_date: null, completed: false });
 });
-it.each([{ title: '  ' }, { title: 'x'.repeat(121) }, { title: 'Task', priority: 'urgent' }, { title: 'Task', due_date: '2026-02-30' }])(
+it.each(['abc', '0', '-1', '1.5', '9007199254740993', '1e400'])('rejects invalid id %s with 422 without calling the repository', async (id) => {
+  const { app, repository } = setup();
+  for (const response of [await request(app).get(`/api/todos/${id}`), await request(app).patch(`/api/todos/${id}`).send({ completed: true }), await request(app).delete(`/api/todos/${id}`)]) {
+    expect(response.status).toBe(422);
+  }
+  expect(repository.get).not.toHaveBeenCalled();
+  expect(repository.update).not.toHaveBeenCalled();
+  expect(repository.delete).not.toHaveBeenCalled();
+});
+it('returns the task by id', async () => {
+  const { app, repository } = setup();
+  repository.get.mockResolvedValue(todo);
+  const response = await request(app).get('/api/todos/1');
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual(todo);
+  expect(repository.get).toHaveBeenCalledWith(1);
+});
+it('returns 404 when getting a missing task', async () => {
+  const { app, repository } = setup();
+  repository.get.mockResolvedValue(null);
+  const response = await request(app).get('/api/todos/7');
+  expect(response.status).toBe(404);
+  expect(response.body).toEqual({ detail: 'Task not found.' });
+});
+it('updates a task with trimmed input', async () => {
+  const { app, repository } = setup();
+  repository.update.mockResolvedValue(todo);
+  const response = await request(app).patch('/api/todos/1').send({ title: '  New  ' });
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual(todo);
+  expect(repository.update).toHaveBeenCalledWith(1, { title: 'New' });
+});
+it.each([{}, { title: '' }, { unknown: 1 }])('rejects invalid update %j with 422 without calling the repository', async (payload) => {
+  const { app, repository } = setup();
+  expect((await request(app).patch('/api/todos/1').send(payload)).status).toBe(422);
+  expect(repository.update).not.toHaveBeenCalled();
+});
+it('returns 404 when updating a missing task', async () => {
+  const { app, repository } = setup();
+  repository.update.mockResolvedValue(null);
+  const response = await request(app).patch('/api/todos/7').send({ completed: true });
+  expect(response.status).toBe(404);
+  expect(response.body).toEqual({ detail: 'Task not found.' });
+});
+it('deletes a task with 204 and no body', async () => {
+  const { app, repository } = setup();
+  repository.delete.mockResolvedValue(true);
+  const response = await request(app).delete('/api/todos/1');
+  expect(response.status).toBe(204);
+  expect(response.text).toBe('');
+  expect(repository.delete).toHaveBeenCalledWith(1);
+});
+it('returns 404 when deleting a missing task', async () => {
+  const { app, repository } = setup();
+  repository.delete.mockResolvedValue(false);
+  const response = await request(app).delete('/api/todos/7');
+  expect(response.status).toBe(404);
+  expect(response.body).toEqual({ detail: 'Task not found.' });
+});
+it.each([{ title: '  ' },{ title: 'x'.repeat(121) }, { title: 'Task', priority: 'urgent' }, { title: 'Task', due_date: '2026-02-30' }])(
   'rejects invalid create input without calling the repository: %j', async (payload) => {
     const { app, repository } = setup();
     expect((await request(app).post('/api/todos').send(payload)).status).toBe(422);
