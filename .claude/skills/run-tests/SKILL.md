@@ -21,7 +21,7 @@ Exit 0 = `status: pass`. Output fields: `failed[]` (consistent failures with mes
 
 ## Order
 
-1. **Baseline** — whole stack before writing anything. Failing tests here are `pre-existing`.
+1. **Baseline** — whole stack before writing anything. A failing test is `pre-existing` only if neither the test, the source it tests, nor a module that source imports is in the change list from `analyze-changes`; otherwise the change caused it and it is handled below like any other red test.
 2. **Iterate** — run only the test files you wrote or changed.
 3. **Final** — whole stack with `--repeat 2`, then `--coverage` and `diff-coverage.mjs`. Uncovered changed lines are either a planned case you missed or a line with no behaviour to test — say which.
 
@@ -33,9 +33,9 @@ Read the message and the source line before changing anything. Every red test en
 |---|---|---|
 | `fixed-test` | The test was wrong: setup, mock, query, async handling | Fix it; `cause` names the mistake |
 | `product-bug` | The source contradicts its intended behaviour | Remove only that test; finding with expected vs actual and the source line |
-| `pre-existing` | Red at baseline | Leave it untouched |
+| `pre-existing` | Red at baseline and unrelated to the change list (see Order) | Leave it untouched |
 | `blocked` | Needs a production change, a dependency or a fixture outside test files | Leave it out; say exactly what is needed |
 
-- Existing test red after the PR change: intended (PR description, diff) → update it under `fixed-test` citing the diff line; otherwise `product-bug`.
+- Existing test red because of the change (at baseline or later, including type errors from a changed signature): intended behaviour per the diff → update it under `fixed-test` citing the diff line; otherwise `product-bug`.
 - `flaky[]` not empty → remove the nondeterminism (time, order, shared state); never retry around it.
 - No outcome yet → keep investigating. "Gave up" is not an outcome.

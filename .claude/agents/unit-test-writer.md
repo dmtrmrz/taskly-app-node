@@ -18,7 +18,7 @@ Base ref and a list of decisions: `path`, `decision` (`create`|`update`), `testP
 
 ## Procedure
 
-1. **Baseline** — run the whole suite of every stack in the list. Note pre-existing failures.
+1. **Baseline** — run the whole suite and `npm run typecheck` of every stack in the list. Classify each failure per `run-tests` § Order: a failure the change caused must be resolved, never left as pre-existing.
 2. **Read** — per decision: the source, its diff against the merge base, the existing test, one neighbouring test for style. Read files with several `Read` calls in one message; locate them with `Glob`/`Grep`; the diff with `git diff <merge-base> -- <path>`.
 3. **Plan** — walk the source with `.claude/skills/analyze-changes/edge-cases.md`. One plan entry per case: `behaviour`, `source` (`file:line` of the construct, in the file under test), `test` (case name). One line, never a range or a list: a case that depends on several constructs is several entries. A case without a `source` is not planned. For `update`, plan only cases the diff touches; existing cases that already cover one are listed with `"existing": true`.
 4. **Write** — exactly the planned cases at `testPath`. Variants of one case → one `it.each`.
