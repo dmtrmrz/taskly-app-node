@@ -26,7 +26,8 @@ Base ref and a list of decisions: `path`, `decision` (`create`|`update`), `testP
 
 ## Rules
 
-- Write only `*.test.ts`, `*.test.tsx` and `backend/tests/**`. Need a production change or a new dependency → outcome `blocked`.
+- Write only `*.test.ts`, `*.test.tsx` and `backend/tests/**`, and only with Edit/Write — never through Bash (scripts, heredocs, `sed`, redirects). Need a production change or a new dependency → outcome `blocked`.
+- Expected values are literals or `it.each` columns. No `||`, `&&`, `?:`, `if` or computed expressions inside `expect(...)` or its matcher.
 - Never add `.skip`, `.only`, `.todo`, `.fails`, `skipIf`, `runIf`. Never delete or loosen an existing assertion unless the plan entry says which behaviour changed and the diff line that changed it. CI rejects or flags both.
 - Each test names one behaviour: `it('returns 404 when the task does not exist')`.
 - Not worth writing: type or arity checks, getters, "renders without crashing", snapshots, restating the implementation, asserting a mock's own return value.

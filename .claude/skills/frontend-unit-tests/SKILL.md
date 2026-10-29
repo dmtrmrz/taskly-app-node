@@ -26,6 +26,7 @@ description: Conventions for unit tests in frontend/ (React 19, TanStack Query 5
 ## What to assert
 
 - Query by role and accessible name (`getByRole('button', { name: 'Delete' })`); `getByTestId` only for the `alert` mock.
+- DOM state through jest-dom matchers: `toBeDisabled`, `toBeEnabled`, `toBeVisible`, `toHaveTextContent`, `toBeInTheDocument`, `toBeChecked`. Never `hasAttribute`, `.disabled`, `.className` or `getAttribute` where a matcher exists.
 - Interactions through `userEvent.setup()`; `await` every interaction.
 - User-visible outcome or the call contract (`toHaveBeenCalledWith`), not internal state or render counts.
 - Disabled / busy / empty / error states when the component branches on them.
