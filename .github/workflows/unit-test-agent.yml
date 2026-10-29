@@ -1,0 +1,229 @@
+name: Unit test agent
+run-name: Unit test agent · ${{ github.event.pull_request.title || github.ref_name }}
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: unit-test-agent-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CLAUDE_CODE_VERSION: 2.1.300
+  CLAUDE_MODEL: sonnet
+  OUT: .unit-test-agent
+
+jobs:
+  analyze:
+    name: Analyze changes
+    # Fork PRs get no secrets: skip them instead of failing.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.classify.outputs.run }}
+      base: ${{ steps.classify.outputs.base }}
+      head: ${{ steps.classify.outputs.head }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          base: origin/${{ github.base_ref || github.event.repository.default_branch }}
+          install: "false"
+      - id: classify
+        env:
+          BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          node .claude/skills/analyze-changes/classify.mjs "$BASE" > classify.json
+          candidates=$(node -p 'require("./classify.json").files.filter((f) => f.gate === "candidate").length')
+          {
+            echo "base=$BASE"
+            echo "head=${{ github.event.pull_request.head.sha || github.sha }}"
+            echo "run=$([ "$candidates" -gt 0 ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Unit test agent: $candidates candidate file(s)" >> "$GITHUB_STEP_SUMMARY"
+          node -p 'require("./classify.json").files.map((f) => `- \`${f.path}\` — ${f.gate}${f.reason ? `: ${f.reason}` : ""}`).join("\n")' >> "$GITHUB_STEP_SUMMARY"
+
+  agent:
+    name: Write tests (Claude Code)
+    needs: analyze
+    if: needs.analyze.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # No GitHub token with write access exists in this job: the agent can only change the workspace.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.analyze.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          base: ${{ needs.analyze.outputs.base }}
+      - name: Install Claude Code ${{ env.CLAUDE_CODE_VERSION }}
+        run: npm install --global "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+      - name: Run /unit-tests
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          BASE: ${{ needs.analyze.outputs.base }}
+        run: |
+          mkdir -p "$OUT"
+          claude -p "/unit-tests $BASE" \
+            --model "$CLAUDE_MODEL" \
+            --permission-mode dontAsk \
+            --strict-mcp-config \
+            --max-turns 200 \
+            --output-format json \
+            --allowedTools Read Grep Glob Agent Skill \
+              "Edit(backend/tests/**)" "Edit(**/*.test.ts)" "Edit(**/*.test.tsx)" "Edit($OUT/**)" \
+              "Bash(node .claude/skills/*)" "Bash(node $PWD/.claude/skills/*)" "Bash(node .github/scripts/verify-patch.mjs)" \
+              "Bash(cd *)" "Bash(npm run typecheck)" "Bash(node_modules/.bin/prettier *)" \
+            > "$OUT/session.json"
+      - name: Export patch
+        if: always()
+        run: |
+          git add --intent-to-add --all
+          git diff --binary HEAD > "$OUT/agent.patch"
+          git diff --stat HEAD
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: agent
+          path: |
+            ${{ env.OUT }}/agent.patch
+            ${{ env.OUT }}/report.json
+            ${{ env.OUT }}/session.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    name: Verify independently
+    needs: [analyze, agent]
+    if: always() && needs.analyze.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No secrets: everything below is deterministic and re-checks the agent's output from scratch.
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.render.outputs.commit }}
+    env:
+      BASE: ${{ needs.analyze.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.analyze.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          base: ${{ needs.analyze.outputs.base }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: agent
+          path: ${{ env.OUT }}
+      - name: Apply the agent patch
+        run: |
+          mkdir -p "$OUT"
+          if [ -s "$OUT/agent.patch" ]; then git apply --whitespace=nowarn "$OUT/agent.patch"; fi
+      - name: Patch guard
+        run: node .github/scripts/verify-patch.mjs > "$OUT/guard.json" || true
+      - name: Type check
+        run: |
+          check() { (cd "$1" && npm run --silent typecheck > /dev/null 2>&1) && echo true || echo false; }
+          echo "{ \"backend\": $(check backend), \"frontend\": $(check frontend) }" > "$OUT/typecheck.json"
+      - name: Tests, flaky check and coverage
+        run: |
+          for stack in backend frontend; do
+            node .claude/skills/run-tests/run.mjs "$stack" --repeat 2 > "$OUT/tests-$stack.json" || true
+            node .claude/skills/run-tests/run.mjs "$stack" --coverage > /dev/null || true
+          done
+          node .claude/skills/run-tests/diff-coverage.mjs "$BASE" > "$OUT/diff-coverage.json" || true
+      - name: Validate the agent report
+        run: |
+          if [ -f "$OUT/report.json" ]; then
+            node .claude/skills/unit-tests/validate-report.mjs "$OUT/report.json" > "$OUT/validation.json" || true
+          fi
+      - id: render
+        name: Render the PR comment
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AGENT_RESULT: ${{ needs.agent.result }}
+        run: |
+          node .github/scripts/render-comment.mjs "$OUT"
+          echo "commit=$(node -p 'require("./.unit-test-agent/status.json").commit')" >> "$GITHUB_OUTPUT"
+          cat "$OUT/comment.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verified
+          path: ${{ env.OUT }}
+          retention-days: 14
+      - name: Fail on rejected agent output
+        run: node -e 'const s = require("./.unit-test-agent/status.json"); if (s.reasons.length) { console.log(s.reasons.join("\n")); process.exit(1) }'
+
+  publish:
+    name: Commit tests and comment
+    needs: [analyze, verify]
+    if: always() && (needs.verify.result == 'success' || needs.verify.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Write access, but no Claude secret and no repository code is executed here: only git apply and gh.
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      HEAD_SHA: ${{ needs.analyze.outputs.head }}
+      GH_TOKEN: ${{ github.token }}
+      VERIFIED: ${{ github.workspace }}/../verified
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified
+          path: ${{ env.VERIFIED }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.verify.outputs.commit == 'true'
+        with:
+          ref: ${{ env.BRANCH }}
+      - id: commit
+        name: Commit verified tests
+        if: needs.verify.outputs.commit == 'true'
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "::warning::$BRANCH moved since the run started; not committing onto newer code."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git apply --index "$VERIFIED/agent.patch"
+          git commit -q -m "test: add unit tests from unit-test agent" -m "Verified run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          git push origin "HEAD:$BRANCH"
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Update the sticky PR comment
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          body="$VERIFIED/comment.md"
+          if [ -n "$SHA" ]; then printf '\n**Committed:** %s\n' "$SHA" >> "$body"; fi
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -z "$pr" ]; then echo "No open PR for $BRANCH; the result is in the job summary."; exit 0; fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- unit-test-agent -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$body" > /dev/null
+          else
+            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          fi

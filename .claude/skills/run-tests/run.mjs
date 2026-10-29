@@ -81,7 +81,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.exit(2)
   }
   if (values.coverage && files.length) {
-    process.stderr.write('--coverage needs the full suite: per-file thresholds fail on a partial run.\n')
+    process.stderr.write('--coverage needs the full suite: coverage thresholds fail on a partial run.\n')
     process.exit(2)
   }
   const stackDir = join(ROOT, stack)
