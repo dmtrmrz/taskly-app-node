@@ -42,7 +42,8 @@ All output goes to `.unit-test-agent/` (git-ignored). Dependencies are installed
 
 `verdict` is the reviewer's verdict on the first version. `open` = the writer did not answer the note.
 
-8. Print one line per test file written, per finding and per note not `fixed`. No other summary.
+8. **Validate** — `node ${CLAUDE_SKILL_DIR}/validate-report.mjs`. Plan errors → send them to the writer of that stack once to return corrected `plan` entries (tests stay as they are), rewrite the report, validate again. Still failing → keep the errors in `report.json` as `"validation": [...]`.
+9. Print one line per test file written, per finding and per note not `fixed`. No other summary.
 
 ## Rules
 
