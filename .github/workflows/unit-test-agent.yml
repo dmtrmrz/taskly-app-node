@@ -170,6 +170,7 @@ jobs:
         with:
           name: verified
           path: ${{ env.OUT }}
+          include-hidden-files: true
           retention-days: 14
       - name: Fail on rejected agent output
         run: node -e 'const s = require("./.unit-test-agent/status.json"); if (s.reasons.length) { console.log(s.reasons.join("\n")); process.exit(1) }'
