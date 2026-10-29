@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/skills/analyze-changes/classify.mjs *)",
+      "Bash(node .claude/skills/run-tests/run.mjs *)",
+      "Bash(node .claude/skills/run-tests/diff-coverage.mjs *)",
+      "Bash(node .github/scripts/verify-patch.mjs)",
+      "Bash(npm run typecheck)",
+      "Bash(node_modules/.bin/prettier --write *)",
+      "Edit(/backend/tests/**)",
+      "Edit(/**/*.test.ts)",
+      "Edit(/**/*.test.tsx)",
+      "Edit(/.unit-test-agent/**)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(!**/.env.example)"
+    ]
+  }
+}
