@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { classify, coverageGaps, parseNameStatus, testPathFor } from './classify.mjs'
+import { classify, coverageGaps, parseNameStatus, testPathFor, touchedSince } from './classify.mjs'
 
 const none = () => false
 const only = (...paths) => (path) => paths.includes(path)
@@ -87,4 +87,14 @@ test('lists files below the threshold on lines or branches', () => {
     { status: 'M', path: 'frontend/src/lib/http.ts', coverage: { lines: 0, branches: 0 } },
     { status: 'M', path: 'frontend/src/features/todos/components/TodoItem.tsx', coverage: { lines: 100, branches: 35.7 } },
   ])
+})
+
+test('limits branch changes to files touched since the previous push', () => {
+  const branch = [
+    { status: 'M', path: 'frontend/src/features/todos/TodosPage.tsx' },
+    { status: 'A', path: 'frontend/src/features/todos/hooks/useClearCompletedMutation.ts' },
+  ]
+  const sincePush = ['frontend/src/features/todos/TodosPage.tsx', 'backend/src/factory.ts']
+  assert.deepEqual(touchedSince(branch, sincePush), [branch[0]])
+  assert.deepEqual(touchedSince(branch, []), [])
 })

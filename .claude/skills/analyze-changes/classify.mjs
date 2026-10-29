@@ -74,7 +74,13 @@ export function coverageGaps(summaries, threshold) {
   )
 }
 
-function changedEntries(root, base) {
+// Keeps the branch's own changes that were also touched since `since`; base-branch merges never qualify.
+export function touchedSince(entries, sincePaths) {
+  const touched = new Set(sincePaths)
+  return entries.filter((entry) => touched.has(entry.path))
+}
+
+function changedEntries(root, base, since) {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
   // Diff the working tree against the merge base so local, uncommitted changes are included.
   const mergeBase = git('merge-base', base, 'HEAD').trim()
@@ -82,7 +88,10 @@ function changedEntries(root, base) {
     .split('\n')
     .filter(Boolean)
     .map((path) => ({ status: 'A', path }))
-  return { mergeBase, entries: [...parseNameStatus(git('diff', '--name-status', '-M', mergeBase)), ...untracked] }
+  const entries = [...parseNameStatus(git('diff', '--name-status', '-M', mergeBase)), ...untracked]
+  if (!since) return { mergeBase, entries }
+  const sincePaths = [...parseNameStatus(git('diff', '--name-status', '-M', since)), ...untracked].map((entry) => entry.path)
+  return { mergeBase, entries: touchedSince(entries, sincePaths) }
 }
 
 function gapEntries(root, threshold) {
@@ -97,7 +106,11 @@ function gapEntries(root, threshold) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { gaps: { type: 'boolean', default: false }, threshold: { type: 'string', default: '80' } },
+    options: {
+      gaps: { type: 'boolean', default: false },
+      threshold: { type: 'string', default: '80' },
+      since: { type: 'string' },
+    },
   })
   const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
   const exists = (path) => existsSync(join(root, path))
@@ -108,7 +121,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.stdout.write(`${JSON.stringify({ mode: 'gaps', threshold: Number(values.threshold), files }, null, 2)}\n`)
   } else {
     const base = positionals[0] ?? 'origin/main'
-    const { mergeBase, entries } = changedEntries(root, base)
-    process.stdout.write(`${JSON.stringify({ mode: 'diff', base, mergeBase, files: classify(entries, exists) }, null, 2)}\n`)
+    const { mergeBase, entries } = changedEntries(root, base, values.since)
+    const result = { mode: 'diff', base, since: values.since ?? null, mergeBase, files: classify(entries, exists) }
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
   }
 }

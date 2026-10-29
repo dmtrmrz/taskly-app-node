@@ -2,7 +2,7 @@
 name: unit-tests
 description: Create or update unit tests for changed code (default) or for coverage gaps, verify them and write a report. Entry point for local runs and the pull request workflow.
 disable-model-invocation: true
-argument-hint: "[base-ref | --gaps]"
+argument-hint: "[base-ref [--since <ref>] | --gaps]"
 hooks:
   PreToolUse:
     - matcher: "Bash"
@@ -13,7 +13,7 @@ hooks:
 
 # Unit tests
 
-Arguments: `$ARGUMENTS` — a base ref (default `origin/main`) or `--gaps`.
+Arguments: `$ARGUMENTS` — a base ref (default `origin/main`), optionally `--since <ref>` to analyze only what changed after that ref, or `--gaps`.
 All output goes to `.unit-test-agent/` (git-ignored). Dependencies are installed.
 
 1. **Analyze** — `analyze-changes` skill with the arguments. `--gaps` → first run `run-tests` with `--coverage` for both stacks.

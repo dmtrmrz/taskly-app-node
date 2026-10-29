@@ -31,6 +31,7 @@ jobs:
     outputs:
       run: ${{ steps.classify.outputs.run }}
       base: ${{ steps.classify.outputs.base }}
+      since: ${{ steps.classify.outputs.since }}
       head: ${{ steps.classify.outputs.head }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,15 +46,20 @@ jobs:
       - id: classify
         env:
           BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
+          BEFORE: ${{ github.event.action == 'synchronize' && github.event.before || '' }}
         run: |
-          node .claude/skills/analyze-changes/classify.mjs "$BASE" > classify.json
+          # A follow-up push is analyzed incrementally; earlier pushes already had their run.
+          since=""
+          if [ -n "$BEFORE" ] && git merge-base --is-ancestor "$BEFORE" HEAD 2>/dev/null; then since="$BEFORE"; fi
+          node .claude/skills/analyze-changes/classify.mjs "$BASE" ${since:+--since "$since"} > classify.json
           candidates=$(node -p 'require("./classify.json").files.filter((f) => f.gate === "candidate").length')
           {
             echo "base=$BASE"
+            echo "since=$since"
             echo "head=${{ github.event.pull_request.head.sha || github.sha }}"
             echo "run=$([ "$candidates" -gt 0 ] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
-          echo "### Unit test agent: $candidates candidate file(s)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Unit test agent: $candidates candidate file(s) ${since:+since ${since:0:7}}" >> "$GITHUB_STEP_SUMMARY"
           node -p 'require("./classify.json").files.map((f) => `- \`${f.path}\` — ${f.gate}${f.reason ? `: ${f.reason}` : ""}`).join("\n")' >> "$GITHUB_STEP_SUMMARY"
 
   agent:
@@ -80,9 +86,10 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           BASE: ${{ needs.analyze.outputs.base }}
+          SINCE: ${{ needs.analyze.outputs.since }}
         run: |
           mkdir -p "$OUT"
-          claude -p "/unit-tests $BASE" \
+          claude -p "/unit-tests $BASE${SINCE:+ --since $SINCE}" \
             --model "$CLAUDE_MODEL" \
             --permission-mode dontAsk \
             --strict-mcp-config \
