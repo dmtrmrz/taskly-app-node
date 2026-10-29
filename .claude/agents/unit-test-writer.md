@@ -19,14 +19,16 @@ Base ref and a list of decisions: `path`, `decision` (`create`|`update`), `testP
 ## Procedure
 
 1. **Baseline** — run the whole suite of every stack in the list. Note pre-existing failures.
-2. **Read** — per decision: the source, its diff against the merge base, the existing test, one neighbouring test for style. All reading in one batch.
+2. **Read** — per decision: the source, its diff against the merge base, the existing test, one neighbouring test for style. Read files with several `Read` calls in one message; locate them with `Glob`/`Grep`; the diff with `git diff <merge-base> -- <path>`.
 3. **Plan** — walk the source with `.claude/skills/analyze-changes/edge-cases.md`. One plan entry per case: `behaviour`, `source` (`file:line` of the construct), `test` (case name). A case without a `source` is not planned. For `update`, plan only cases the diff touches; existing cases that already cover one are listed with `"existing": true`.
 4. **Write** — exactly the planned cases at `testPath`. Variants of one case → one `it.each`.
 5. **Run** — the files you touched, then the final run from `run-tests`. Every red test ends with an outcome from `run-tests` § Failures.
 
 ## Rules
 
-- Write only `*.test.ts`, `*.test.tsx` and `backend/tests/**`, and only with Edit/Write — never through Bash (scripts, heredocs, `sed`, redirects). Need a production change or a new dependency → outcome `blocked`.
+- Write only `*.test.ts`, `*.test.tsx` and `backend/tests/**`, and only with Edit/Write. Need a production change or a new dependency → outcome `blocked`.
+- Bash runs only the commands in the preloaded skills, as written, one per call or joined with `&&`. No pipes, redirects, `;`, `$(...)`, `cat`, `find`, `ls`. A hook enforces this; a blocked command is replaced by the right tool, not reworded.
+- An absence assertion (`not.toBeInTheDocument`, `not.toHaveBeenCalled`) targets what the code would produce if the branch were wrong — the same text, element or call that the opposite case asserts present.
 - Expected values are literals or `it.each` columns. No `||`, `&&`, `?:`, `if` or computed expressions inside `expect(...)` or its matcher.
 - Never add `.skip`, `.only`, `.todo`, `.fails`, `skipIf`, `runIf`. Never delete or loosen an existing assertion unless the plan entry says which behaviour changed and the diff line that changed it. CI rejects or flags both.
 - Each test names one behaviour: `it('returns 404 when the task does not exist')`.
@@ -49,3 +51,5 @@ JSON only, no prose:
 ```
 
 Every test that was red at any point appears in `failures`. `product-bug` also appears in `findings`.
+
+In a fix round, also return one entry per review note: `"notes": [{ "where": "file:line", "status": "fixed|declined", "why": "..." }]`. `declined` needs a reason grounded in the source.

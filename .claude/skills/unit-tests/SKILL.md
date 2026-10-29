@@ -20,7 +20,7 @@ All output goes to `.unit-test-agent/` (git-ignored). Dependencies are installed
 2. **Gate** — no `create`/`update` decisions → write the report with the skips and stop.
 3. **Write** — delegate to the `unit-test-writer` subagent: base ref and the `create`/`update` decisions with `testPath` and `reason`. Backend and frontend decisions go to two writers in parallel; each owns only its stack's files.
 4. **Review** — delegate to the `unit-test-reviewer` subagent: the decisions, the writers' `plan` and `failures`, and the test files.
-5. **Fix once** — `changes-requested` → send the notes to the writer of that stack once. Notes still open after that go to the report; no second review round.
+5. **Fix once** — `changes-requested` → send the notes to the writer of that stack once. Each note gets the writer's `fixed` or `declined` status; no second review round, so `fixed` is the writer's claim and reported as such.
 6. **Guard** — `node .github/scripts/verify-patch.mjs`. Violations → fix them through the writer once; still failing → report them, never work around the check.
 7. **Report** — write `.unit-test-agent/report.json`:
 
@@ -33,11 +33,16 @@ All output goes to `.unit-test-agent/` (git-ignored). Dependencies are installed
   "tests": [{ "path": "...", "for": "..." }],
   "failures": [{ "test": "file › name", "outcome": "fixed-test|product-bug|pre-existing|blocked|unresolved", "cause": "...", "evidence": "..." }],
   "findings": [{ "severity": "critical|important|minor", "where": "file:line", "problem": "...", "evidence": "..." }],
-  "review": { "verdict": "approved|changes-requested", "openNotes": [{ "kind": "...", "where": "...", "problem": "...", "fix": "..." }] }
+  "review": {
+    "verdict": "approved|changes-requested",
+    "notes": [{ "kind": "...", "where": "...", "problem": "...", "status": "fixed|declined|open", "why": "..." }]
+  }
 }
 ```
 
-8. Print one line per test file written, per finding and per open note. No other summary.
+`verdict` is the reviewer's verdict on the first version. `open` = the writer did not answer the note.
+
+8. Print one line per test file written, per finding and per note not `fixed`. No other summary.
 
 ## Rules
 

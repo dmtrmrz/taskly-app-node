@@ -39,9 +39,17 @@ test('blocks writing files or running code through the shell', () => {
   for (const command of blocked) assert.notEqual(check(command), null, command)
 })
 
+const run = (input, ...args) =>
+  spawnSync(process.execPath, [new URL('./bash-allowlist.mjs', import.meta.url).pathname, ...args], { input: JSON.stringify(input), encoding: 'utf8' })
+
+test('with --agent, checks only Bash calls made by that subagent', () => {
+  const command = { tool_name: 'Bash', tool_input: { command: 'cat a.ts | head' } }
+  assert.equal(run({ ...command, agent_type: 'unit-test-writer' }, '--agent', 'unit-test-writer').status, 2)
+  assert.equal(run({ ...command, agent_type: 'Explore' }, '--agent', 'unit-test-writer').status, 0)
+  assert.equal(run(command, '--agent', 'unit-test-writer').status, 0)
+})
+
 test('exits 2 with the reason on stderr for a blocked Bash call', () => {
-  const run = (input) =>
-    spawnSync(process.execPath, [new URL('./bash-allowlist.mjs', import.meta.url).pathname], { input: JSON.stringify(input), encoding: 'utf8' })
   const blocked = run({ tool_name: 'Bash', tool_input: { command: 'sed -i s/a/b/ x.ts' } })
   assert.equal(blocked.status, 2)
   assert.match(blocked.stderr, /not on the allowlist/)
