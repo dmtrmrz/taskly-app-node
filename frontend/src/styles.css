@@ -24,6 +24,10 @@
 .row.compact {
   gap: var(--space-sm);
 }
+.spread > .row.compact {
+  margin-left: auto;
+  justify-content: flex-end;
+}
 .actions {
   justify-content: flex-end;
 }

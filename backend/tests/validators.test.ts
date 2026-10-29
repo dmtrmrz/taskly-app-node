@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSchema, updateSchema, idSchema, todoSchema } from '../src/features/todos/validators.ts';
+import { createSchema, updateSchema, idSchema, todoSchema, clearQuerySchema } from '../src/features/todos/validators.ts';
 import { todo } from './fixture.ts';
 
 describe('todo validation', () => {
@@ -29,6 +29,12 @@ describe('todo validation', () => {
     expect(updateSchema.safeParse({ [field]: null }).success).toBe(false);
   });
   it('forbids extra patch fields', () => expect(updateSchema.safeParse({ id: 1 }).success).toBe(false));
+  it('accepts only completed=true in the clear query', () => {
+    expect(clearQuerySchema.parse({ completed: 'true' })).toEqual({ completed: 'true' });
+  });
+  it.each([{ completed: 'false' }, {}, { completed: 'true', extra: '1' }, { completed: true }])(
+    'rejects invalid clear query %j', (input) => expect(clearQuerySchema.safeParse(input).success).toBe(false),
+  );
   it.each(['0', '-1', '1.5', 'abc', '9007199254740992'])('rejects invalid id %s', (id) => {
     expect(idSchema.safeParse(id).success).toBe(false);
   });
