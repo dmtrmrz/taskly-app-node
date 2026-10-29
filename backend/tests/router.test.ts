@@ -5,7 +5,7 @@ import { createTodosRouter } from '../src/features/todos/router.ts';
 import { todo } from './fixture.ts';
 
 function setup() {
-  const repository = { list: vi.fn().mockResolvedValue([todo]), create: vi.fn().mockResolvedValue(todo), get: vi.fn(), update: vi.fn(), delete: vi.fn() };
+  const repository = { list: vi.fn().mockResolvedValue([todo]), create: vi.fn().mockResolvedValue(todo), get: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteCompleted: vi.fn().mockResolvedValue(2) };
   const app = express();
   app.use(express.json());
   app.use('/api/todos', createTodosRouter(repository));
@@ -84,6 +84,24 @@ it('returns 404 when deleting a missing task', async () => {
   expect(response.status).toBe(404);
   expect(response.body).toEqual({ detail: 'Task not found.' });
 });
+it('clears completed tasks and returns the deleted count', async () => {
+  const { app, repository } = setup();
+  repository.deleteCompleted.mockResolvedValue(5);
+  const response = await request(app).delete('/api/todos?completed=true');
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({ deleted: 5 });
+  expect(repository.deleteCompleted).toHaveBeenCalledOnce();
+  expect(repository.delete).not.toHaveBeenCalled();
+});
+it.each(['', '?completed=false', '?completed=true&extra=1', '?other=1'])(
+  'rejects clear request with query "%s" with 422 without calling the repository', async (query) => {
+    const { app, repository } = setup();
+    const response = await request(app).delete(`/api/todos${query}`);
+    expect(response.status).toBe(422);
+    expect(response.body.detail).toEqual(expect.any(Array));
+    expect(repository.deleteCompleted).not.toHaveBeenCalled();
+  },
+);
 it.each([{ title: '  ' },{ title: 'x'.repeat(121) }, { title: 'Task', priority: 'urgent' }, { title: 'Task', due_date: '2026-02-30' }])(
   'rejects invalid create input without calling the repository: %j', async (payload) => {
     const { app, repository } = setup();

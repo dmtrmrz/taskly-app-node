@@ -34,6 +34,14 @@ it('DELETEs the task on removal', async () => {
   expect(request).toHaveBeenCalledWith('/todos/7', { method: 'DELETE' })
 })
 
+it('DELETEs completed tasks and returns the deleted count', async () => {
+  vi.mocked(request).mockResolvedValue({ deleted: 3 })
+  await expect(todosApi.clearCompleted()).resolves.toEqual({ deleted: 3 })
+  expect(request).toHaveBeenCalledWith('/todos?completed=true', {
+    method: 'DELETE',
+  })
+})
+
 it('sends only writable task fields on creation', async () => {
   vi.mocked(request).mockResolvedValue(todoFixture)
   await expect(todosApi.create(todoFixture)).resolves.toEqual(todoFixture)
