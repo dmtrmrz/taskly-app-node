@@ -1,14 +1,14 @@
 ---
 name: analyze-changes
 description: Classify the files changed against a base ref and decide per file whether unit tests must be created, updated or skipped. Use before writing tests for a branch or pull request.
-argument-hint: "[base-ref]"
+argument-hint: "[base-ref] [--since <ref>]"
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/classify.mjs *)
 ---
 
 # Analyze changes
 
 1. Collect the files:
-   - Changes: `node ${CLAUDE_SKILL_DIR}/classify.mjs <base-ref>` (default `origin/main`).
+   - Changes: `node ${CLAUDE_SKILL_DIR}/classify.mjs <base-ref> [--since <ref>]` (default `origin/main`). `--since` keeps only the branch's files touched after that ref, e.g. the previous push.
    - Coverage gaps in existing code: `node ${CLAUDE_SKILL_DIR}/classify.mjs --gaps [--threshold 80]`, after a `--coverage` run of both stacks. Treat each file as changed in full; `coverage` shows what is missing.
 
    Output: one entry per file with `stack`, `kind`, `gate`, `suggested`, `testPath`, `testExists`.
