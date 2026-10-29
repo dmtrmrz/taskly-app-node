@@ -46,8 +46,10 @@ export function TodosPage() {
   async function clear() {
     if (busy) return
     try {
-      await clearCompleted.mutateAsync()
-      notify('Completed tasks cleared.')
+      const { deleted } = await clearCompleted.mutateAsync()
+      notify(
+        `Cleared ${deleted} completed ${deleted === 1 ? 'task' : 'tasks'}.`,
+      )
     } catch {
       // Display the mutation error in the page alert.
     }
